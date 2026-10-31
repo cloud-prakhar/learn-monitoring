@@ -1,6 +1,6 @@
 # infra/prometheus.yml
 #
-# This is the shared Prometheus configuration for the Docker projects (01–03).
+# This is the shared Prometheus configuration for the Docker projects (01–08).
 # Prometheus and Grafana run here as the central monitoring infrastructure.
 #
 # Apps running natively on the host are scraped by the native Prometheus
@@ -35,17 +35,171 @@ scrape_configs:
   # Project 2 — Job Processor (port 8082)
   # Uncomment after: cd projects/02-job-processor && docker compose up -d --build
   # ---------------------------------------------------------------------------
-  - job_name: "job-processor"
-    static_configs:
-      - targets: ["job-processor:8082"]
+  # - job_name: "job-processor"
+  #   static_configs:
+  #     - targets: ["job-processor:8082"]
 
   # ---------------------------------------------------------------------------
   # Project 3 — Cache Service (port 8083)
   # Uncomment after: cd projects/03-cache-service && docker compose up -d --build
   # ---------------------------------------------------------------------------
-  - job_name: "cache-service"
-    static_configs:
-      - targets: ["cache-service:8083"]
+  # - job_name: "cache-service"
+  #   static_configs:
+  #     - targets: ["cache-service:8083"]
+
+  # ---------------------------------------------------------------------------
+  # Project 4 — System Monitor, raw /proc (port 8084)
+  # Uncomment after: cd projects/04-system-monitor && docker compose up -d --build
+  # ---------------------------------------------------------------------------
+  # - job_name: "system-monitor"
+  #   static_configs:
+  #     - targets: ["system-monitor:8084"]
+
+  # ---------------------------------------------------------------------------
+  # Project 5 — URL Health Checker (port 8085)
+  # Uncomment after: cd projects/05-url-health-checker && docker compose up -d --build
+  # ---------------------------------------------------------------------------
+  # - job_name: "url-health-checker"
+  #   static_configs:
+  #     - targets: ["url-health-checker:8085"]
+
+  # ---------------------------------------------------------------------------
+  # Project 6 — psutil System Monitor (port 8086)
+  # Uncomment after: cd projects/06-psutil-system-monitor && docker compose up -d --build
+  # ---------------------------------------------------------------------------
+  # - job_name: "psutil-system-monitor"
+  #   static_configs:
+  #     - targets: ["psutil-system-monitor:8086"]
+
+  # ---------------------------------------------------------------------------
+  # Project 7 — Blackbox HTTP probes (exporter: blackbox-http:9115)
+  # Uncomment BOTH jobs after: cd projects/07-blackbox-http-probes && docker compose up -d
+  #
+  # How a probe job works: each "target" is a URL to TEST, not a /metrics page.
+  # relabel_configs moves the URL into ?target=, copies the "module" label into
+  # ?module=, keeps the URL as the instance label, and finally points the actual
+  # scrape at the exporter. Prometheus ends up requesting:
+  #   http://blackbox-http:9115/probe?target=<url>&module=<module>
+  # ---------------------------------------------------------------------------
+  # - job_name: "blackbox-http"
+  #   metrics_path: /probe
+  #   static_configs:
+  #     - labels: {module: "http_2xx"}               # any 2xx = success
+  #       targets:
+  #         - http://flask-web-api:8081/
+  #         - http://job-processor:8082/stats
+  #         - http://cache-service:8083/stats
+  #         - http://system-monitor:8084/
+  #         - http://url-health-checker:8085/
+  #         - http://psutil-system-monitor:8086/
+  #     - labels: {module: "http_body_ok"}           # 200 AND body says "ok"
+  #       targets:
+  #         - http://grafana:3000/api/health
+  #         - http://flask-web-api:8081/
+  #         - http://system-monitor:8084/
+  #     - labels: {module: "http_prometheus_healthy"}
+  #       targets:
+  #         - http://prometheus:9090/-/healthy
+  #     - labels: {module: "http_post_job"}          # POST, expect 202
+  #       targets:
+  #         - http://job-processor:8082/jobs
+  #     - labels: {module: "https_2xx_tls"}          # needs internet; TLS cert expiry
+  #       targets:
+  #         - https://prometheus.io
+  #         - https://grafana.com
+  #   relabel_configs:
+  #     - source_labels: [__address__]
+  #       target_label: __param_target
+  #     - source_labels: [module]
+  #       target_label: __param_module
+  #     - source_labels: [__param_target]
+  #       target_label: instance
+  #     - target_label: __address__
+  #       replacement: blackbox-http:9115
+  #
+  # # The exporter's OWN health metrics (/metrics, not /probe).
+  # - job_name: "blackbox-exporter-http"
+  #   static_configs:
+  #     - targets: ["blackbox-http:9115"]
+
+  # ---------------------------------------------------------------------------
+  # Project 8 — Blackbox TCP / ICMP / DNS probes (exporter: blackbox-network:9115)
+  # Uncomment the four jobs below after: cd projects/08-blackbox-network-probes && docker compose up -d
+  # Targets labelled expected: "down" fail ON PURPOSE (closed port, unknown name).
+  # ---------------------------------------------------------------------------
+  # - job_name: "blackbox-tcp"
+  #   metrics_path: /probe
+  #   static_configs:
+  #     - labels: {module: "tcp_connect"}
+  #       targets:
+  #         - prometheus:9090
+  #         - grafana:3000
+  #         - flask-web-api:8081
+  #         - job-processor:8082
+  #         - cache-service:8083
+  #         - system-monitor:8084
+  #         - url-health-checker:8085
+  #         - psutil-system-monitor:8086
+  #         - blackbox-http:9115
+  #     - labels: {module: "tcp_connect", expected: "down"}
+  #       targets:
+  #         - grafana:9999                           # nothing listens here
+  #     - labels: {module: "tcp_grafana_http_banner"}
+  #       targets:
+  #         - grafana:3000
+  #   relabel_configs:
+  #     - source_labels: [__address__]
+  #       target_label: __param_target
+  #     - source_labels: [module]
+  #       target_label: __param_module
+  #     - source_labels: [__param_target]
+  #       target_label: instance
+  #     - target_label: __address__
+  #       replacement: blackbox-network:9115
+  #
+  # - job_name: "blackbox-icmp"
+  #   metrics_path: /probe
+  #   static_configs:
+  #     - labels: {module: "icmp_ping"}
+  #       targets:
+  #         - prometheus
+  #         - grafana
+  #         - flask-web-api
+  #         - system-monitor
+  #         - url-health-checker
+  #         - psutil-system-monitor
+  #   relabel_configs:
+  #     - source_labels: [__address__]
+  #       target_label: __param_target
+  #     - source_labels: [module]
+  #       target_label: __param_module
+  #     - source_labels: [__param_target]
+  #       target_label: instance
+  #     - target_label: __address__
+  #       replacement: blackbox-network:9115
+  #
+  # - job_name: "blackbox-dns"
+  #   metrics_path: /probe
+  #   static_configs:
+  #     - labels: {module: "dns_container_prometheus"}
+  #       targets: ["127.0.0.11:53"]                 # Docker's embedded DNS
+  #     - labels: {module: "dns_container_missing", expected: "down"}
+  #       targets: ["127.0.0.11:53"]
+  #     - labels: {module: "dns_external"}           # needs internet
+  #       targets: ["1.1.1.1:53", "8.8.8.8:53"]
+  #   relabel_configs:
+  #     - source_labels: [__address__]
+  #       target_label: __param_target
+  #     - source_labels: [module]
+  #       target_label: __param_module
+  #     - source_labels: [__param_target]
+  #       target_label: instance
+  #     - target_label: __address__
+  #       replacement: blackbox-network:9115
+  #
+  # - job_name: "blackbox-exporter-network"
+  #   static_configs:
+  #     - targets: ["blackbox-network:9115"]
 
   # ---------------------------------------------------------------------------
   # Apps that run natively (not in Docker) cannot be reached by container name.

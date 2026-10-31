@@ -91,10 +91,11 @@ Look for:
 msg="Completed loading of configuration file" filename=/etc/prometheus/prometheus.yml
 ```
 
-> **If the new target never appears after a reload:** `infra/prometheus.yml` is bind-mounted,
-> and editors that save with an atomic write (write to a temp file, then rename) swap the file's
-> inode. The reload then re-parses the *old* inode still held by the mount, so your edit is
-> invisible. Force the container to re-open the file:
+> **If the new target never appears after a reload:** confirm Prometheus sees your edit —
+> `docker exec prometheus grep -n job-processor /etc/prometheus/prometheus.yml` should show the
+> line *without* `#`. `infra/` mounts its whole directory so editor saves always show through;
+> if you changed it to a single-file mount, an editor that saves by "write temp file + rename"
+> leaves Prometheus reading the old file. Restart forces a fresh mount:
 >
 > ```bash
 > cd ../../infra && docker compose restart prometheus && cd -

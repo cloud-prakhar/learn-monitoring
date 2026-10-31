@@ -189,5 +189,5 @@ docker compose down          # from integration/
 ```
 
 Then head to **`../infra/`** to start the shared monitoring stack, then pick a project from
-`projects/` (Projects 1–3, Docker) to build a real application that exposes custom metrics
+`projects/` (Projects 1–8, Docker) to build a real application that exposes custom metrics
 and dashboards.

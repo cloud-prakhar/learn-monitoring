@@ -8,6 +8,6 @@ it is automated.
 
 Provisioning is introduced and fully used in:
 - `../integration/grafana/provisioning/` — auto-wires Prometheus as a data source
-- `../infra/grafana/provisioning/` — same, for the shared infra stack (projects 01–03)
+- `../infra/grafana/provisioning/` — same, for the shared infra stack (projects 01–08)
 
 See `../integration/README.md` for a full explanation of how provisioning works.

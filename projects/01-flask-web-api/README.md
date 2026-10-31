@@ -1,7 +1,7 @@
 # Project 1 — Flask Web API
 
 A small Python/Flask REST API that records Prometheus metrics on every HTTP request.
-This is the simplest of the three projects and the best one to start with.
+This is the simplest of the eight projects and the best one to start with.
 
 ---
 

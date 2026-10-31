@@ -1,0 +1,34 @@
+# docker-compose.yml — psutil System Monitor (Project 6)
+#
+# Runs ONLY the application. Prometheus and Grafana live in infra/.
+# Prometheus scrapes it by container name: psutil-system-monitor:8086.
+#
+# Prerequisites: infra/ must be running (docker compose up -d from infra/).
+#
+# Start:   docker compose up -d --build
+# Stop:    docker compose down
+
+services:
+
+  psutil-system-monitor:
+    build: ./app
+    container_name: psutil-system-monitor
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    environment:
+      # Exposed as the "os" label on host_info. "linux" because a container
+      # always reports the Linux host Docker runs on — even on a Mac.
+      HOST_OS: "linux"
+      # Report disk usage for these paths only. Without it psutil lists Docker's
+      # bind-mounted files (/etc/hosts, /etc/resolv.conf) as "partitions".
+      DISK_PATHS: "/"
+    volumes:
+      # Host /proc, read-only — psutil.PROCFS_PATH points here (see Dockerfile).
+      - /proc:/host/proc:ro
+    networks:
+      - monitoring
+
+networks:
+  monitoring:
+    external: true

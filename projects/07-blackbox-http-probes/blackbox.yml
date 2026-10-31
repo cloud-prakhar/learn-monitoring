@@ -1,0 +1,73 @@
+# blackbox.yml — Blackbox Exporter modules for Project 7 (HTTP probes)
+#
+# A "module" is a named recipe for ONE kind of probe. Prometheus picks the module
+# per scrape with ?module=<name> and the URL to test with ?target=<url>:
+#
+#   http://blackbox-http:9115/probe?module=http_2xx&target=http://flask-web-api:8081/
+#
+# The exporter runs the probe at that moment and answers with probe_* metrics
+# (probe_success, probe_duration_seconds, probe_http_status_code, ...).
+#
+# This file is bind-mounted read-only. After editing it, restart the exporter:
+#   docker compose restart blackbox-http
+
+modules:
+
+  # The basic availability check: GET the URL, succeed on any 2xx status.
+  http_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      method: GET
+      # Container DNS on the monitoring network returns IPv4 addresses only.
+      preferred_ip_protocol: ip4
+      # Empty list = accept any 2xx.
+      valid_status_codes: []
+      follow_redirects: true
+
+  # Content check: a 200 alone is not enough — the body must say the service is OK.
+  # Projects 1/4/5/6 answer {"service": "...", "status": "ok"}; Grafana answers
+  # {"database": "ok", ...}. A broken app that still returns 200 fails this probe.
+  http_body_ok:
+    prober: http
+    timeout: 5s
+    http:
+      method: GET
+      preferred_ip_protocol: ip4
+      valid_status_codes: [200]
+      fail_if_body_not_matches_regexp:
+        - '"(status|database)": ?"ok"'
+
+  # Plain-text health endpoint: Prometheus /-/healthy returns "Prometheus Server is Healthy."
+  http_prometheus_healthy:
+    prober: http
+    timeout: 5s
+    http:
+      method: GET
+      preferred_ip_protocol: ip4
+      valid_status_codes: [200]
+      fail_if_body_not_matches_regexp:
+        - "Healthy"
+
+  # POST probe: create a job on Project 2 and expect 202 Accepted.
+  http_post_job:
+    prober: http
+    timeout: 5s
+    http:
+      method: POST
+      preferred_ip_protocol: ip4
+      headers:
+        Content-Type: application/json
+      body: '{"type": "probe"}'
+      valid_status_codes: [202]
+
+  # External HTTPS: also checks the TLS certificate. probe_ssl_earliest_cert_expiry
+  # gives the expiry time, and fail_if_not_ssl rejects a plain-HTTP answer.
+  https_2xx_tls:
+    prober: http
+    timeout: 10s
+    http:
+      method: GET
+      preferred_ip_protocol: ip4
+      fail_if_not_ssl: true
+      follow_redirects: true

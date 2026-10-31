@@ -25,6 +25,9 @@ specific commands to diagnose and fix the problem.
 14. [external network "monitoring" not found](#14-external-network-monitoring-not-found)
 15. [How to read logs effectively](#15-how-to-read-logs-effectively)
 16. [Full reset — start from scratch](#16-full-reset--start-from-scratch)
+17. [System monitors (Projects 4 and 6) show odd values](#17-system-monitors-projects-4-and-6-show-odd-values)
+18. [Blackbox probes fail or show no data (Projects 7 and 8)](#18-blackbox-probes-fail-or-show-no-data-projects-7-and-8)
+19. [Edited prometheus.yml but the reload changed nothing](#19-edited-prometheusyml-but-the-reload-changed-nothing)
 
 ---
 
@@ -96,6 +99,9 @@ sudo lsof -i :8082      # Job Processor
 sudo lsof -i :8083      # Cache Service
 sudo lsof -i :8084      # System Monitor
 sudo lsof -i :8085      # URL Health Checker
+sudo lsof -i :8086      # psutil System Monitor
+sudo lsof -i :9115      # Blackbox Exporter — HTTP probes (Project 7)
+sudo lsof -i :9116      # Blackbox Exporter — network probes (Project 8)
 ```
 
 **Find what is using the port (Windows PowerShell, if not using WSL2):**
@@ -1409,4 +1415,158 @@ After a full prune:
 ```bash
 docker run hello-world   # confirm Docker itself still works
 ```
+
+---
+
+## 17. System monitors (Projects 4 and 6) show odd values
+
+Run `scripts/validate-connectivity.sh system-monitor system-monitor:8084 system-monitor` (or the
+`psutil-system-monitor` equivalent) first — it tells you whether this is a connectivity problem
+or a values problem.
+
+#### Memory / uptime match the container, not the host
+
+**Cause:** the host `/proc` is not mounted, so the app reads the container's own `/proc`.
+
+```bash
+docker inspect system-monitor --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{"\n"}}{{end}}'
+```
+
+**Expected:** `/proc -> /host/proc`. If missing, check the `volumes:` section of the project's
+`docker-compose.yml` and recreate: `docker compose up -d --force-recreate`.
+
+#### Numbers don't match Task Manager / Activity Monitor
+
+**Expected behaviour on Docker Desktop.** Containers run inside a Linux VM, and the monitors
+report that VM. On WSL2 compare with `free -h` and `uptime` *inside* WSL instead.
+
+#### `host_disk_usage_percent` lists `/etc/hosts`, `/etc/resolv.conf`, …
+
+**Cause:** `DISK_PATHS` is not set for Project 6, so psutil lists Docker's bind-mounted files as
+partitions. Add `DISK_PATHS: "/"` under `environment:` in
+`projects/06-psutil-system-monitor/docker-compose.yml` and run `docker compose up -d`.
+
+#### Network panel only shows `eth0` and `lo`
+
+**Expected.** `/proc/net` is per network namespace — the container sees only its own interfaces.
+See `projects/06-psutil-system-monitor/README.md`.
+
+---
+
+## 18. Blackbox probes fail or show no data (Projects 7 and 8)
+
+#### Target is UP on /targets but the dashboard shows it DOWN
+
+**Not a contradiction.** For a probe job, `up` means "Prometheus reached the **exporter**".
+Whether the probed service is healthy is `probe_success`. Ask the exporter why the probe failed:
+
+```bash
+curl -s 'http://localhost:9115/probe?module=http_2xx&target=http://cache-service:8083/stats&debug=true' \
+  | sed -n '1,/Metrics that/p'
+```
+
+(Project 8 uses port **9116**.) The last log lines name the failing step: DNS resolution,
+connection refused, status code, regex mismatch.
+
+#### `lookup <name> on 127.0.0.11:53: no such host`
+
+**Cause:** the probed container is not running or not on the `monitoring` network. Docker's DNS
+only knows names of running containers on the same network.
+
+```bash
+docker ps --filter network=monitoring --format '{{.Names}}'
+```
+
+#### `Logs for the probe:` is empty in `debug=true` output
+
+**Cause:** the exporter was started without `--log.prober=info`, so probe logs stay at debug
+level. Both project `docker-compose.yml` files pass it — recreate with `docker compose up -d`.
+
+#### Every target in a probe job is DOWN with `connection refused` / `no such host` on `blackbox-…:9115`
+
+**Cause:** the exporter itself is down, or the `replacement:` in `relabel_configs` is wrong. It
+must be the **container** name and port — `blackbox-http:9115` or `blackbox-network:9115` —
+never `localhost` and never the host port `9116`.
+
+```bash
+docker exec prometheus wget -qO- http://blackbox-network:9115/-/healthy
+```
+
+#### All probes show `instance="blackbox-http:9115"`
+
+**Cause:** the relabel steps are in the wrong order. `__param_target` and `instance` must be set
+from `__address__` **before** `__address__` is overwritten with the exporter address. Copy the
+block from `infra/prometheus.yml` exactly.
+
+#### Probe fails with `unknown module` / HTTP 400
+
+```
+Unknown module "http2xx"
+```
+
+**Cause:** the `module` label in `prometheus.yml` doesn't match a name under `modules:` in
+`blackbox.yml`. List what the exporter loaded:
+
+```bash
+curl -s http://localhost:9115/config
+```
+
+After editing `blackbox.yml`, restart the exporter (the file is bind-mounted, and editors often
+replace the file rather than edit it in place):
+
+```bash
+docker compose restart blackbox-http        # or blackbox-network
+```
+
+#### ICMP probe fails with `socket: permission denied`
+
+**Cause:** the exporter runs as a non-root user and the kernel is not allowing unprivileged ping
+sockets. `projects/08-blackbox-network-probes/docker-compose.yml` sets
+`net.ipv4.ping_group_range: "0 2147483647"`; check it is applied:
+
+```bash
+docker exec blackbox-network cat /proc/sys/net/ipv4/ping_group_range
+```
+
+**Expected:** `0	2147483647`.
+
+#### `https_2xx_tls` / `dns_external` probes fail
+
+**Expected without internet access** (or behind a proxy/firewall that blocks outbound 443 or
+UDP 53). Everything else is on the local Docker network and keeps working.
+
+---
+
+## 19. Edited prometheus.yml but the reload changed nothing
+
+### Symptom
+
+`curl -X POST http://localhost:9090/-/reload` returns 200, but the new job never shows on
+`http://localhost:9090/targets`.
+
+### Diagnosis — does Prometheus see the file you saved?
+
+```bash
+docker exec prometheus grep -n 'job_name' /etc/prometheus/prometheus.yml
+```
+
+Compare with `grep -n 'job_name' infra/prometheus.yml` on your machine.
+
+- **Container shows the old content** → the file is bind-mounted on its own and your editor
+  saved by writing a new file and renaming it (vim, VS Code, sed -i and many others do). The
+  mount still points at the old file. `infra/docker-compose.yml` avoids this by mounting the
+  whole `infra/` directory; if you use an older copy with
+  `./prometheus.yml:/etc/prometheus/prometheus.yml:ro`, either switch to `./:/etc/prometheus:ro`
+  or restart after each edit:
+  ```bash
+  docker compose -f infra/docker-compose.yml up -d        # picks up a changed mount
+  docker compose -f infra/docker-compose.yml restart prometheus
+  ```
+- **Container shows the new content** → the job is still commented, or the reload failed on a
+  YAML error. Check both:
+  ```bash
+  docker exec prometheus promtool check config /etc/prometheus/prometheus.yml
+  docker logs prometheus 2>&1 | grep -iE "reload|error loading" | tail -3
+  ```
+- **Job present but UNKNOWN** → wait for the first scrape (≤15 seconds).
 
