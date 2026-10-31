@@ -1,0 +1,36 @@
+# docker-compose.yml — Blackbox HTTP Probes (Project 7)
+#
+# Runs the Prometheus Blackbox Exporter on the shared 'monitoring' network.
+# There is no app of our own here: the exporter probes the containers that are
+# ALREADY running (Prometheus, Grafana, projects 1-6) from the outside, the way
+# a user would hit them.
+#
+# Prerequisites: infra/ must be running (docker compose up -d from infra/).
+#
+# Start:   docker compose up -d
+# Reload:  docker compose restart blackbox-http   (after editing blackbox.yml)
+# Stop:    docker compose down
+
+services:
+
+  blackbox-http:
+    image: prom/blackbox-exporter:v0.27.0
+    container_name: blackbox-http
+    restart: unless-stopped
+    ports:
+      # http://localhost:9115 — exporter UI with recent probe results + debug logs
+      - "9115:9115"
+    volumes:
+      - ./blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    command:
+      - "--config.file=/etc/blackbox_exporter/config.yml"
+      # Probe logs are written at "debug" by default and hidden at the default
+      # log level. Raising them to "info" makes ?debug=true and the exporter web
+      # page show WHY a probe failed (they also appear in docker logs).
+      - "--log.prober=info"
+    networks:
+      - monitoring
+
+networks:
+  monitoring:
+    external: true

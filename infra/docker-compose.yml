@@ -16,7 +16,12 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Mount the infra/ DIRECTORY, not just the file. Many editors save by writing a
+      # new file and renaming it over the old one; a single-file bind mount would keep
+      # showing Prometheus the OLD file, so /-/reload would silently change nothing.
+      # A directory mount always shows the current file. Prometheus only reads
+      # /etc/prometheus/prometheus.yml from it.
+      - ./:/etc/prometheus:ro
       - promdata:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"

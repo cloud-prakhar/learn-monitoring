@@ -73,7 +73,7 @@ Grafana can load any dashboard that exists as a standalone JSON file:
 
 1. Click the hamburger menu → **Dashboards** → **New** → **Import**
 2. Click **Upload dashboard JSON file**
-3. Select a dashboard JSON file (the Projects 1–3 dashboards live in
+3. Select a dashboard JSON file (the Projects 1–8 dashboards live in
    `projects/<project>/dashboards/` and `infra/grafana/dashboards/`)
 4. On the next screen, select **Prometheus** as the data source
 5. Click **Import**

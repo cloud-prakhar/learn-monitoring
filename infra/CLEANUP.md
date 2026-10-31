@@ -3,7 +3,7 @@
 Tears down the shared Prometheus + Grafana stack started from `infra/`, including both data
 volumes and the `monitoring` network that all projects connect to.
 
-> **Stop the projects first.** Projects 01–03 attach to the `monitoring` network this stack
+> **Stop the projects first.** Projects 01–08 attach to the `monitoring` network this stack
 > creates. If any project container is still running, Docker will refuse to remove the network.
 > Run each project's own `CLEANUP.md` before this one.
 
@@ -15,9 +15,14 @@ volumes and the `monitoring` network that all projects connect to.
 docker ps --filter network=monitoring
 ```
 
-Expected: only `prometheus` and `grafana` (or nothing). If you see `flask-web-api`,
-`job-processor`, `cache-service`, `system-monitor`, or `url-health-checker`, stop those first with
-their `CLEANUP.md`.
+Expected: only `prometheus` and `grafana` (or nothing). If you see any of `flask-web-api`,
+`job-processor`, `cache-service`, `system-monitor`, `url-health-checker`,
+`psutil-system-monitor`, `blackbox-http` or `blackbox-network`, stop those first with their
+`CLEANUP.md` — or all at once from the repo root:
+
+```bash
+for p in projects/*/; do (cd "$p" && docker compose down --rmi local); done
+```
 
 ---
 
@@ -54,6 +59,8 @@ Expected: only `job_name: "prometheus"` should be uncommented.
 
 ```bash
 docker rmi prom/prometheus:v3.12.0 grafana/grafana:13.0.1
+docker rmi prom/blackbox-exporter:v0.27.0      # pulled by Projects 7 and 8
+docker rmi python:3.12-slim                    # base image of Projects 1–6
 ```
 
 ---

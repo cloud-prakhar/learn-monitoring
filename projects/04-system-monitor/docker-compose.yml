@@ -1,0 +1,31 @@
+# docker-compose.yml — System Monitor (Project 4)
+#
+# Runs ONLY the application. Prometheus and Grafana live in infra/.
+# The app joins the pre-existing 'monitoring' network so Prometheus can scrape it
+# by container name: system-monitor:8084.
+#
+# Prerequisites: infra/ must be running (docker compose up -d from infra/).
+#
+# Start:   docker compose up -d --build
+# Stop:    docker compose down
+
+services:
+
+  system-monitor:
+    build: ./app
+    container_name: system-monitor
+    restart: unless-stopped
+    ports:
+      - "8084:8084"
+    volumes:
+      # The host's /proc, read-only. The app reads /host/proc/stat, /host/proc/meminfo,
+      # ... instead of the container's own /proc (PROC_ROOT is set in the Dockerfile).
+      # On Docker Desktop (Windows/macOS) "the host" is the Linux VM Docker runs in.
+      - /proc:/host/proc:ro
+    networks:
+      - monitoring
+
+networks:
+  monitoring:
+    # Join the network created by infra/ — do not create a new one.
+    external: true

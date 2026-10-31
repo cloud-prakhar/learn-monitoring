@@ -1,0 +1,37 @@
+# docker-compose.yml — Blackbox Network Probes (Project 8)
+#
+# A second, separate Blackbox Exporter for TCP / ICMP / DNS probes. It runs next
+# to Project 7's exporter, so it uses host port 9116 (inside the network it still
+# listens on 9115 — Prometheus reaches it at blackbox-network:9115).
+#
+# Prerequisites: infra/ must be running (docker compose up -d from infra/).
+#
+# Start:   docker compose up -d
+# Reload:  docker compose restart blackbox-network   (after editing blackbox.yml)
+# Stop:    docker compose down
+
+services:
+
+  blackbox-network:
+    image: prom/blackbox-exporter:v0.27.0
+    container_name: blackbox-network
+    restart: unless-stopped
+    ports:
+      # host 9116 → container 9115 (9115 on the host is taken by Project 7)
+      - "9116:9115"
+    volumes:
+      - ./blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    command:
+      - "--config.file=/etc/blackbox_exporter/config.yml"
+      # Show probe logs in ?debug=true output and the web page (see Project 7).
+      - "--log.prober=info"
+    # Explicit so ICMP works even where the Docker default is missing:
+    # lets the exporter's non-root user open "ping" sockets.
+    sysctls:
+      net.ipv4.ping_group_range: "0 2147483647"
+    networks:
+      - monitoring
+
+networks:
+  monitoring:
+    external: true

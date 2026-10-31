@@ -1,0 +1,78 @@
+# blackbox.yml — Blackbox Exporter modules for Project 8 (network-layer probes)
+#
+# Project 7 asked "does the web page answer correctly?". These modules go one
+# layer down and ask "is the port open?", "is the host reachable?" and "does
+# the name resolve?" — the checks you reach for when an HTTP probe fails and
+# you need to know WHERE it is broken.
+#
+# This file is bind-mounted read-only. After editing it, restart the exporter:
+#   docker compose restart blackbox-network
+
+modules:
+
+  # TCP: succeed if a TCP handshake to host:port completes. Says nothing about
+  # whether the app behind the port is healthy — only that something listens.
+  tcp_connect:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      preferred_ip_protocol: ip4
+
+  # TCP with a conversation: send raw bytes and expect a reply pattern.
+  # Here we speak HTTP by hand to Grafana — the same idea is used to probe
+  # Redis (PING → +PONG), SMTP banners, etc.
+  tcp_grafana_http_banner:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      preferred_ip_protocol: ip4
+      query_response:
+        - send: "GET /api/health HTTP/1.0\r\nHost: grafana\r\n\r\n"
+        - expect: "^HTTP/1\\.[01] 200"
+
+  # ICMP: ping. Needs permission to send ICMP — Docker 20.10+ allows unprivileged
+  # ping sockets inside containers by default (net.ipv4.ping_group_range).
+  icmp_ping:
+    prober: icmp
+    timeout: 5s
+    icmp:
+      preferred_ip_protocol: ip4
+
+  # DNS: ask Docker's embedded DNS server (127.0.0.11 — present inside every
+  # container on a user-defined network) to resolve the name "prometheus".
+  # This is the exact lookup Grafana does before it can reach Prometheus.
+  dns_container_prometheus:
+    prober: dns
+    timeout: 5s
+    dns:
+      transport_protocol: udp
+      preferred_ip_protocol: ip4
+      query_name: "prometheus"
+      query_type: "A"
+      valid_rcodes: [NOERROR]
+      validate_answer_rrs:
+        fail_if_not_matches_regexp:
+          - "prometheus.*\tIN\tA\t.*"
+
+  # Same server, a name that does not exist → NXDOMAIN → this probe FAILS.
+  # Kept on purpose so the dashboard always shows what a failed DNS probe looks like.
+  dns_container_missing:
+    prober: dns
+    timeout: 5s
+    dns:
+      transport_protocol: udp
+      preferred_ip_protocol: ip4
+      query_name: "no-such-service"
+      query_type: "A"
+      valid_rcodes: [NOERROR]
+
+  # External DNS (needs internet): resolve prometheus.io via a public resolver.
+  dns_external:
+    prober: dns
+    timeout: 5s
+    dns:
+      transport_protocol: udp
+      preferred_ip_protocol: ip4
+      query_name: "prometheus.io"
+      query_type: "A"
+      valid_rcodes: [NOERROR]

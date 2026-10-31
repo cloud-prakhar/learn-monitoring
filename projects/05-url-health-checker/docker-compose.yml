@@ -1,0 +1,38 @@
+# docker-compose.yml — URL Health Checker (Project 5)
+#
+# Runs ONLY the checker. Prometheus and Grafana live in infra/.
+# It joins the 'monitoring' network for two reasons:
+#   1. Prometheus scrapes it at url-health-checker:8085
+#   2. It polls the other containers by NAME (prometheus:9090, flask-web-api:8081, ...)
+#
+# Prerequisites: infra/ must be running (docker compose up -d from infra/).
+#
+# Start:   docker compose up -d --build
+# Stop:    docker compose down
+
+services:
+
+  url-health-checker:
+    build: ./app
+    container_name: url-health-checker
+    restart: unless-stopped
+    ports:
+      - "8085:8085"
+    environment:
+      # Comma-separated list of URLs to poll. Use container names, never localhost —
+      # inside this container, localhost is the checker itself.
+      TARGETS: >-
+        http://prometheus:9090/-/healthy,
+        http://grafana:3000/api/health,
+        http://flask-web-api:8081/,
+        http://job-processor:8082/stats,
+        http://cache-service:8083/stats,
+        http://system-monitor:8084/,
+        http://psutil-system-monitor:8086/
+      CHECK_INTERVAL_SECONDS: "15"
+    networks:
+      - monitoring
+
+networks:
+  monitoring:
+    external: true
